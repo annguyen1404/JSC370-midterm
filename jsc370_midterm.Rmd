@@ -1,5 +1,5 @@
 ---
-title: "JSC370 Midterm - A Look at Football Field Goals in "
+title: "JSC370 Midterm - A Look at NFL Field Goals in the 2018-2020 Seasons"
 author: "Chloe Nguyen"
 date: "23/02/2022"
 output: html_document
@@ -47,6 +47,8 @@ library(broom)
 ## Introduction
 
 American football is one of the most watched sports in North America. In these games, one of the many ways to earn points is through a field goal- during which, a kicker attempts to kick the ball through the crossbar. In this report, we will examine the factors that contribute to a field goal kick. The question we are interested in exploring is: what variables are associated with the kicking length of a field goal and what is the relationship between kicking length and kicking attempt outcome?
+
+The repo link for this project is: https://github.com/annguyen1404/JSC370-midterm
 
 $$\\[0.1in]$$
 
@@ -659,7 +661,7 @@ ggplot(data_teams, aes(x=avg_kickLength, y=success_prop)) +
   ylab("Proportion of Successful Kicks") +
   theme_minimal() +
   theme(
-     plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5),
+     plot.title = element_text(color="#666666", size=14, face="bold", hjust = 0.5),
      plot.subtitle = element_text(color="#666666", size=13, hjust = 0.5),
     axis.title.x = element_text(color="#666666", size=11,face="bold"),
     axis.title.y = element_text(color="#666666", size=11, face="bold")
@@ -717,7 +719,7 @@ ggplot(data_teams, aes(x=avg_kickLength, y=success_prop)) +
   ylab("Proportion of Successful Kicks") +
   theme_minimal() +
   theme(
-     plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5),
+     plot.title = element_text(color="#666666", size=14, face="bold", hjust = 0.5),
      plot.subtitle = element_text(color="#666666", size=13, hjust = 0.5),
     axis.title.x = element_text(color="#666666", size=11,face="bold"),
     axis.title.y = element_text(color="#666666", size=11, face="bold")
