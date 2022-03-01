@@ -1,0 +1,739 @@
+---
+title: "JSC370 Midterm - A Look at Football Field Goals in "
+author: "Chloe Nguyen"
+date: "23/02/2022"
+output: html_document
+---
+<style>
+.html-widget {
+    margin: auto;
+}
+
+.marker-cluster-small {
+background-color: rgba(218, 169, 183, 0.8);
+}
+.marker-cluster-small div {
+background-color: rgba(192, 108, 132, 0.6);
+}
+.marker-cluster-medium {
+background-color: rgba(174, 161, 186, 0.8);
+}
+.marker-cluster-medium div {
+background-color: rgba(108, 91, 123, 0.6);
+}
+
+.marker-cluster-large {
+background-color: rgba(162, 190, 215, 0.8);
+}
+.marker-cluster-large div {
+background-color: rgba(53, 92, 125, 0.6);
+}
+</style>
+
+
+```{r setup, include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(data.table)
+library(kableExtra)
+library(dplyr, warn.conflicts = FALSE)
+library(ggplot2)
+library(leaflet)
+library(mgcv)
+library(stringr)
+library(broom)
+```
+
+## Introduction
+
+American football is one of the most watched sports in North America. In these games, one of the many ways to earn points is through a field goal- during which, a kicker attempts to kick the ball through the crossbar. In this report, we will examine the factors that contribute to a field goal kick. The question we are interested in exploring is: what variables are associated with the kicking length of a field goal and what is the relationship between kicking length and kicking attempt outcome?
+
+$$\\[0.1in]$$
+
+## Methods
+
+### The Datasets
+
+The dataset we'll be working with details all special team plays (that is, plays that involve punts, kickoffs, field goals and extra points) in all National Football League (NFL) games from 2018 to 2020. This dataset was provided by the NFL as a part of their 2022 data competition, Big Data Bowl: https://www.kaggle.com/c/nfl-big-data-bowl-2022/overview
+
+We'll also refer to this dataset for the locations of NFL teams' home stadiums: https://github.com/Sinbad311/CloudProject/blob/master/NFL%20Stadium%20Latitude%20and%20Longtitude.csv
+
+Additionally, we'll use this dataset for the abbreviations of NFl teams:
+https://gist.github.com/cnizzardini/13d0a072adb35a0d5817
+
+<!-- DELETE: NOTE ON DATASET RENAMING???? -->
+
+$$\\$$
+
+### The Tools
+
+We'll use dplyr to help merge all datasets and also create new variables. Moreover, we'll use ggplot to create all plots and leaflet for the map. We'll also use broom to tidy all raw outputs and format all tables with kable.
+
+$$\\$$
+
+### Data Wrangling
+
+First, we merge the data of team abbreviations with team locations (longittude and lattitude) by teams. Note that there were NFL teams that changed their names throughout the years- such as the Washington Football Team who also went by the Washington Redskins. Hence, these names need to be modified to match for the datasets to be properly merged. Moreover, there were also teams that recently moved to a different location (e.g. Las Vegas Raiders) and thus, we need to update their location to match their current state. We will use external sources to check the new location of the team and input in this new value.
+
+We also check that the merge was sucessful by looking at the number of observations in the newly merged data. There should be 32 observations- one for each of the 32 NFL teams. 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Loading in and merging datasets
+teams_abbrev <- read_csv("nfl_abbrev.csv")
+# Substring to get team
+teams_abbrev <- teams_abbrev %>%
+  mutate(Team = sub('^(.+)[?=" "]', "", teams_abbrev$Name))
+teams_loc <- read_csv("nfl_locations.csv")
+# Fix naming conventions and teams that moved
+teams_abbrev[teams_abbrev$Name=="Washington Football Team", "Team"] <- "Redskins"
+teams_abbrev[teams_abbrev$Name=="San Francisco 49ers", "Team"] <- "Forty-Niners"
+teams_loc[teams_loc$Team=="Rams", "longitude"] <- teams_loc[teams_loc$Team=="Chargers", "longitude"]
+teams_loc[teams_loc$Team=="Rams", "latitude"] <- teams_loc[teams_loc$Team=="Chargers", "latitude"]
+teams_loc[teams_loc$Team=="Rams", "zip"] <- teams_loc[teams_loc$Team=="Chargers", "zip"]
+teams_loc[teams_loc$Team=="Raiders", "longitude"] <- -115.1833 
+teams_loc[teams_loc$Team=="Raiders", "latitude"] <- 36.0909
+teams_loc[teams_loc$Team=="Raiders", "zip"] <- 89118
+teams_info <- merge(x=teams_abbrev,y=teams_loc,by="Team")
+
+# Table for number of observations in dataset
+tibble(`Number of Rows` = c(nrow(teams_info)),
+       `Number of Columns` = c(ncol(teams_info))) %>%
+  kbl(caption = "<center><strong>Dimensions of Merged Dataset of NFL Team Abbreviations and Locations<center><strong>", align='c') %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+```
+
+We then merge this dataset of team abbreviations and locations with the games data set (provided by the NFL Data Bowl) by home team abbreviation to get the location of where each game was played. Once again, we have to fix team naming conventions so that they match up in order to merge the datasets. We check that this merge was successful by making sure that the number of observations in the original games dataset is equal to the number of observations in the newly merged dataset.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+games <- read_csv("games.csv")
+# Fix naming conventions
+games[games$homeTeamAbbr=="LA", "homeTeamAbbr"] <- "LAR"
+games[games$visitorTeamAbbr=="LA", "visitorTeamAbbr"] <- "LAR"
+games[games$homeTeamAbbr=="OAK", "homeTeamAbbr"] <- "LV"
+games[games$visitorTeamAbbr=="OAK", "visitorTeamAbbr"] <- "LV"
+
+team_games <- merge(x=games,y=teams_info,by.x="homeTeamAbbr", by.y="Abbreviation", all.x=T)
+
+# Table for number of observations in datasets
+tibble(`Datasets`= c("Games", "Merged"),
+       `Number of Rows` = c(nrow(games), nrow(team_games))) %>%
+  kbl(caption = "<center><strong>Number of Observations in Datasets<center><strong>", align='c') %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+
+```
+
+
+Then, we merge this new dataset with the game plays dataset (provided by the NFL Data Bowl) by gameId. This gives us the game information and location of each game play. Again, we have to fix team naming conventions so that they match up in order to merge the datasets. We check that number of observations of game plays and the number of observations of the new dataset are equal to verify that the merge was successful.
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+plays <- read_csv("plays.csv")
+# Fix naming conventions
+plays[plays$possessionTeam=="LA", "possessionTeam"] <- "LAR"
+plays[plays$possessionTeam=="OAK", "possessionTeam"] <- "LV"
+
+data <- merge(x=plays,y=team_games, by="gameId", all.x=T)
+
+# Table for number of observations in datasets
+tibble(`Datasets`= c("Game Plays", "Merged"),
+       `Number of Rows` = c(nrow(plays), nrow(data))) %>%
+  kbl(caption = "<center><strong>Number of Observations in Datasets<center><strong>", align='c') %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+```
+
+
+In this analysis, we'll only be examing field goals. Hence, we'll filter for plays that are 'Field Goal'.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data <- data %>%
+  # filter(specialTeamsPlayType=='Field Goal' | specialTeamsPlayType=='Extra Point')
+  filter(specialTeamsPlayType=='Field Goal')
+```
+
+Additionally, we merge this new dataset of field goal plays with a dataset of players (provided by the NFL Data Bowl) by kickerId to get more information on the athlete who kicked the ball in each game play. However, before the merge, we need to standardize entries in the players dataset.
+
+Since the entries of height for this dataset is not standardized (sometimes recorded entirely in inches and sometimes recorded in feet and inches), we will convert all entries of height to cm. We will also convert all entries of weight to kg. Next, we convert all birth dates to Date objects.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+players <- read_csv("players.csv")
+
+# Convert height in text of feet and inches to cm
+players <- players %>% separate(height, c('feet', 'inches'), "-", convert=TRUE, remove = FALSE) %>%
+  mutate(height_cm = ifelse(players$height %like% "-", 
+                            (12*feet + inches)*2.54, 
+                            as.numeric(height)*2.54))
+
+# Change weight to kg
+players <- players %>%
+  mutate(weight_kg = weight*0.45359237)
+
+# Convert birth date to Date
+players$birthDate <- gsub('/', '-', players$birthDate)
+
+players_a <- players %>%
+  filter(!(players$birthDate %like% "-[0-9]{4}$")) %>%
+  mutate(birthDate = as.Date(birthDate,'%Y-%m-%d'))
+
+players_b <- players %>%
+  filter(players$birthDate %like% "-[0-9]{4}$") %>%
+  mutate(birthDate = as.Date(birthDate,'%m-%d-%Y'))
+
+players <- rbind(players_a, players_b)
+
+```
+
+Similar to before, to check that the merge was successful, we make sure that the number of observations in the newly merged dataset is equal to that of the dataset of field goal plays
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# DELETE Check graph for weird values first. See that height is weird. PUT GRAPH OR SOMETHING HERE.
+# players %>% filter(nflId=="21213"|nflId=="33469")
+# Check with external resources for their actual heights
+# players[players$nflId=="21213", "height_cm"] <- 193.04
+# players[players$nflId=="33469", "height_cm"] <- 182.88
+
+
+# DELETE Fix formatting
+# players %>% filter(nflId=='25326'|nflId=='27091'|nflId=='38851')
+# players[players$nflId=='25326', "birthDate"] <- "1978-03-02"
+# players[players$nflId=='27091', "birthDate"] <- "1975-05-29"
+# players[players$nflId=='38851', "birthDate"] <- "1990-07-16"
+
+old_rows <- nrow(data)
+data <- merge(x=data,y=players,by.x="kickerId", by.y="nflId", all.x=T)
+
+# Table for number of observations in datasets
+tibble(`Datasets`= c("Field Goal Plays", "Merged"),
+       `Number of Rows` = c(old_rows, nrow(data))) %>%
+  kbl(caption = "<center><strong>Number of Observations in Datasets<center><strong>", align='c') %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+
+```
+
+Now, we select the variables relevant to our question of interest: season, week, gameDate, gameTimeEastern, longitude, latitude, homeTeamAbbr, visitorTeamAbbr, quarter, down, specialTeamsPlayType, specialTeamsResult, possessionTeam, yardlineNumber, gameClock, kickLength, kickerId, height_cm, weight_kg, birthDate, displayName, collegeName, Position. 
+
+Finally, we create the following variables of interest:
+
+- birthYear: The year that the player kicking the ball was born
+
+- age: The age of the player at the time of kick
+
+- specialTeamsSuccess: Whether or not the kick attempt was classified as "good"
+
+- possessionTeamHome: Whether or not the team in posession of the ball is the home team
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+# Select relevant variables
+data <- data%>%
+  select(season, week, gameDate, gameTimeEastern, longitude, latitude, homeTeamAbbr, visitorTeamAbbr, quarter, down, specialTeamsPlayType, specialTeamsResult, possessionTeam, yardlineNumber, gameClock, kickLength, kickerId, height_cm, weight_kg, birthDate, displayName, collegeName, Position)
+
+# Create needed variables
+data <- data %>%
+  # mutate(birthDate= as.Date(birthDate,'%Y-%m-%d')) %>%
+  mutate(birthYear = as.numeric(format(birthDate,'%Y'))) %>%
+  mutate(age = season-birthYear) %>%
+  mutate(specialTeamsSuccess=ifelse(specialTeamsResult=='Kick Attempt Good', T, F)) %>%
+  mutate(possessionTeamHome=ifelse(possessionTeam==homeTeamAbbr, T, F))
+
+data <- data.table(data)
+```
+
+$$\\$$
+
+### Exploring the Variables and Handling Missing Values
+
+We first take a look at all the variables of the final dataset that we are working with, their types, whether they are numerical or categorical and the number of missing entires there are.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Numerical variables
+numerical_vars <- c("season", "week", "gameDate", "gameTimeEastern", "longitude", "latitude", "yardlineNumber", "gameClock", "kickLength", "height_cm", "weight_kg", "birthDate", "down", "quarter", "kickerId", "age")
+
+# Columns type
+data_numcat <- sapply(colnames(data), function(x) ifelse(x %in% numerical_vars, "numerical", "categorical"))
+data_type <- sapply(data, typeof)
+
+# Table for variables summary
+tibble(`Column` = colnames(data),
+       Type = data_type,
+       `Numerical or Categorical`= data_numcat,
+       `Number of NAs` = sapply(data, function(x) sum(is.na(x)))) %>%
+  kbl(caption = "<center><strong>Overview of Variables<center><strong>") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# DELETE # Number of NAs BEFORE imputing data
+# 
+# # Columns with at least 1 NA and their type
+# data_yes_na <- sort(colnames(data)[colSums(is.na(data)) > 0])
+# data_yes_na_type <- sapply(data_yes_na, function(x) ifelse(x %in% numerical_vars, "numerical", "categorical"))
+# 
+# # Table for columns with NAs
+# tibble(`Column` = data_yes_na,
+#        `Numerical or Categorical`= data_yes_na_type,
+#        `Number of NAs` = sapply(data_yes_na, function(x) sum(is.na(data[[x]])))) %>%
+#   kbl(caption = "<center><strong>Columns of Merged Dataset With at Least One NA Observation<center><strong>") %>%
+#   kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+
+```
+
+After that, we impute missing values for relevant variables. Note that we use the mean for numerical values and the median for categorical values.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Impute missing values for relevant variables. Note that we use mean for numerical values and median for categorical values.
+
+data[, birthDate := fcoalesce(birthDate, median(birthDate, na.rm = TRUE)),
+ by = .(possessionTeam, season)]
+data[, birthYear := fcoalesce(birthYear, median(birthYear, na.rm = TRUE)),
+ by = .(possessionTeam, season)]
+data[, height_cm := fcoalesce(height_cm, median(height_cm, na.rm = TRUE)),
+ by = .(possessionTeam, season)]
+data[, kickLength := fcoalesce(kickLength, mean(kickLength, na.rm = TRUE)),
+ by = .(possessionTeam, season)]
+  data[, weight_kg:= fcoalesce(weight_kg, median(weight_kg, na.rm = TRUE)),
+ by = .(possessionTeam, season)]
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# DELETE # sum(is.na(players$height_cm))
+# # sum(is.na(data$kickerId))
+# sum(is.na(data$birthDate))
+# sum(is.na(data$birthYear))
+# sum(is.na(data$height_cm))
+# # sum(is.na(data$kickReturnYardage))
+# sum(is.na(data$kickweight_kg))
+
+```
+
+The dataset is now ready to be explored.
+
+$$\\[0.1in]$$
+
+## Preliminary Results
+
+<!-- Taking a look at the histogram of kick lengths, we see that the distribution is left-skewed and unimodal. The average kick length is approximately 42 yards. -->
+
+<!-- ```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.align='center'} -->
+<!-- # Histogram of Kick Length -->
+<!-- data %>% -->
+<!--   ggplot( aes(x=kickLength)) + -->
+<!--     geom_histogram(fill= "#6C5B7B", alpha=0.6, binwidth=2) + -->
+<!--     labs(title = "Histogram of Kick Length") + -->
+<!--     xlab("Kick Length") + -->
+<!--     ylab("Count") + -->
+<!--     theme_minimal() + -->
+<!--     theme( -->
+<!--        plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5), -->
+<!--       axis.title.x = element_text(color="#666666", size=11,face="bold"), -->
+<!--       axis.title.y = element_text(color="#666666", size=11, face="bold") -->
+<!--     ) -->
+
+<!-- ``` -->
+
+<!-- $$\\$$ -->
+
+Taking a look at the histogram of kick lengths, we see that the overall distribution is left-skewed and unimodal. The overall average kick length is approximately 42 yards. However, the average 'no good' kick attempt seems to be higher at 46-52 yards.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+# Stacked histogram of kick length by special team result
+data %>%
+  ggplot( aes(x=kickLength, fill=specialTeamsResult)) +
+    geom_histogram( color="#e9ecef", alpha=0.6, binwidth = 2) +
+    scale_fill_manual("Special Teams Result", values=c("#ddb0bd", "#C06C84", "#81374c", "#6C5B7B", "#355C7D", "#072543")) +
+    labs(title = "Histogram of Kick Length by Special Teams Result") +
+    xlab("Kick Length (yards)") +
+    ylab("Count") +
+    theme_minimal() +
+    theme(
+       plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5),
+      axis.title.x = element_text(color="#666666", size=11,face="bold"),
+      axis.title.y = element_text(color="#666666", size=11, face="bold")
+    )
+
+
+```
+
+Investigating further, we create a summary table for kick length by special teams results. From this, we can see that indeed the mean of a "no good" kick or an unsuccessful kick (46.52 yards) is higher than that of a "good" kick or a successful kick (36.70). Moreover, the overall minimum kicking length was 19 yards and it was a successful kick; while the overall maximum kicking length attempt was 67 yards and was unsuccessful. We also note that there was only 1 downed kick and 1 out of bounds kick in all of the 2018-2020 seasons. 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+# Summary of kick length by special teams result
+data_result <- data %>%
+  group_by(specialTeamsResult) %>%
+  summarise(
+    min_kickLength= min(kickLength),
+    max_kickLength= max(kickLength),
+    mean_kickLength= mean(kickLength),
+    sd_kickLength = sd(kickLength),
+    range_kickLength= max(kickLength)-min(kickLength))
+
+# Table for summary
+kbl(data_result, 
+    caption = "<center><strong>Summary of Kick Length by Special Team Result<center><strong>", 
+    col.names = c("Special Teams Result", "Min Kick Length", "Max Kick Length", "Mean Kick Length", 
+                  "Standard Deviation of Kick Length","Range of Kick Length"),
+    align='c',
+    digits=2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+  
+```
+
+$$\\$$
+
+Now, we explore the kicking length by NFL teams in the 2018-2020 season. From the boxplot, we see that the Denver Broncos (DEN) and Tennessee Titans (TEN) had the highest average kicking lengths at roughly 42 yards. The team with the lowest average kick length is the Las Vegas Raiders (LV) at roughly 35 yards.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+# Kick Length by NFL Teams
+colour <- colorRampPalette(c("#C06C84", "#355C7D"))
+data %>%
+  ggplot( aes(y=kickLength, x=possessionTeam)) +
+  geom_boxplot( fill=colour(32), color="#666666", alpha=0.7)+
+  labs(title = "Boxplot of Kicking Length by NFL Teams in 2018-2020") +
+  xlab("NFL Teams") +
+  scale_x_discrete(guide = guide_axis(angle = 90)) +
+  ylab("Kick Length (yards)") +
+  theme_minimal() +
+  theme(
+     plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5),
+    axis.title.x = element_text(color="#666666", size=11,face="bold"),
+    axis.title.y = element_text(color="#666666", size=11, face="bold")
+  )
+```
+
+$$\\$$
+
+We now examine the plots of kick length vs. kicker height for successful and unsuccessul kicks. We see that for both kick results, the linear regression line is almost completely flat and the points do not follow a particular pattern. Hence, there is essentially no association between these a kicker's height and their kick length- whether the kick is successful or unsuccessful.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+# data_success <- data %>% filter(specialTeamsSuccess == T)
+
+# Kick length vs. Kicker Height
+ggplot(data, aes(y=kickLength, x=height_cm, color=specialTeamsSuccess)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_color_manual("Special Teams Success", values=c("#c87e93", "#6b4b86")) +
+  labs(title = "Kick Length vs. Kicker Height") +
+  xlab("Height (cm)") +
+  ylab("Kick Length (yards)") +
+  theme_minimal() +
+  theme(
+     plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5),
+    axis.title.x = element_text(color="#666666", size=11,face="bold"),
+    axis.title.y = element_text(color="#666666", size=11, face="bold")
+  )
+
+```
+
+$$\\$$
+
+Similarly, we plot kick length vs. kicker weight for successful and unsuccessul kicks. We also see that for both kick results, the linear regression line is almost completely flat and the points do not follow a particular pattern. Thus, there is no association between these a kicker's weight and their kick length- whether the kick is successful or unsuccessful.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+
+# Kick length vs. Kicker Weight
+ggplot(data, aes(y=kickLength, x=weight_kg, color=specialTeamsSuccess)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_color_manual("Special Teams Success", values=c("#c87e93", "#6b4b86")) +
+  labs(title = "Kick Length vs. Kicker Weight") +
+  xlab("Weight (kg)") +
+  ylab("Kick Length (yards)") +
+  theme_minimal() +
+  theme(
+     plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5),
+    axis.title.x = element_text(color="#666666", size=11,face="bold"),
+    axis.title.y = element_text(color="#666666", size=11, face="bold")
+  )
+
+```
+
+$$\\$$
+
+Next, we visualize the teams and their home stadiums on a map.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+
+# Map of NFL stadiums
+icon <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = 'gray',
+  library = 'ion',
+  markerColor = "gray"
+)
+  
+iconsTeams <- icons(
+  iconUrl =  
+    ifelse(teams_info$Abbreviation=="ARI",
+           "https://loodibee.com/wp-content/uploads/nfl-arizona-cardinals-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="ATL", 
+           "https://loodibee.com/wp-content/uploads/nfl-atlanta-falcons-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="BAL",
+            "https://loodibee.com/wp-content/uploads/nfl-baltimore-ravens-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="BUF", 
+           "https://loodibee.com/wp-content/uploads/nfl-buffalo-bills-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="CAR",
+           "https://loodibee.com/wp-content/uploads/nfl-carolina-panthers-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="CHI",
+           "https://loodibee.com/wp-content/uploads/nfl-chicago-bears-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="CIN",
+           "https://loodibee.com/wp-content/uploads/nfl-cincinnati-bengals-team-logo.png",
+    ifelse(teams_info$Abbreviation=="CLE",
+           "https://loodibee.com/wp-content/uploads/nfl-cleveland-browns-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="DAL",
+           "https://loodibee.com/wp-content/uploads/nfl-dallas-cowboys-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="DEN",
+           "https://loodibee.com/wp-content/uploads/nfl-denver-broncos-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="DET",
+           "https://loodibee.com/wp-content/uploads/nfl-detroit-lions-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="GB",
+           "https://loodibee.com/wp-content/uploads/nfl-green-bay-packers-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="HOU",
+           "https://loodibee.com/wp-content/uploads/nfl-houston-texans-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="IND",
+           "https://loodibee.com/wp-content/uploads/nfl-indianapolis-colts-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="JAX",
+           "https://loodibee.com/wp-content/uploads/nfl-jacksonville-jaguars-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="KC",
+           "https://loodibee.com/wp-content/uploads/nfl-kansas-city-chiefs-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="LV",
+           "https://loodibee.com/wp-content/uploads/nfl-oakland-raiders-team-logo.png",
+    ifelse(teams_info$Abbreviation=="LAC",
+           "https://loodibee.com/wp-content/uploads/nfl-los-angeles-chargers-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="LAR",
+           "https://loodibee.com/wp-content/uploads/los-angeles-rams-2020-logo-300x300.png",
+    ifelse(teams_info$Abbreviation=="MIA",
+           "https://loodibee.com/wp-content/uploads/nfl-miami-dolphins-logo-2018.png",
+    ifelse(teams_info$Abbreviation=="MIN",
+           "https://loodibee.com/wp-content/uploads/nfl-minnesota-vikings-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="NE",
+           "https://loodibee.com/wp-content/uploads/nfl-new-england-patriots-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="NO",
+           "https://loodibee.com/wp-content/uploads/nfl-new-orleans-saints-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="NYG",
+           "https://loodibee.com/wp-content/uploads/nfl-new-york-giants-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="NYJ",
+           "https://loodibee.com/wp-content/uploads/nfl-new-york-jets-team-logo.png",
+    ifelse(teams_info$Abbreviation=="PHI",
+           "https://loodibee.com/wp-content/uploads/nfl-philadelphia-eagles-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="PIT",
+           "https://loodibee.com/wp-content/uploads/nfl-pittsburgh-steelers-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="SF",
+           "https://loodibee.com/wp-content/uploads/nfl-san-francisco-49ers-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="SEA",
+           "https://loodibee.com/wp-content/uploads/nfl-seattle-seahawks-team-logo-2.png",
+    ifelse(teams_info$Abbreviation=="TB",
+           "https://loodibee.com/wp-content/uploads/tampa-bay-buccaneers-2020-logo-830x830.png",
+    ifelse(teams_info$Abbreviation=="TEN",
+           "https://loodibee.com/wp-content/uploads/nfl-tennessee-titans-team-logo-2.png",
+           "https://loodibee.com/wp-content/uploads/washington-commanders-logo-830x830.png"))))))))))))))))))))))))))))))), iconWidth = 40, iconHeight = 40
+)
+
+teams_info %>% 
+  leaflet() %>% 
+  addProviderTiles("CartoDB.Positron") %>%
+  addMarkers(lat=~latitude, lng=~longitude, label=~paste0('NFL Team: ', Name), icon = iconsTeams, clusterOptions = markerClusterOptions()) 
+
+```
+
+$$\\$$
+
+From examing the locations of the various team stadiums, we are interested in determining whether there's a change in average kick distance between plays in stadiums of high and low altitudes. In theory, high altitudes allows for better football performance since air pressure is lower and hence, the ball moves faster and straighter.
+
+We use external resources to find the top 3 teams with stadiums at the highest and lowest altitudes:
+
+- Highest altitudes: Denver Broncos (DEN), Arizona Cardinals (ARI), Atlanta Falcons (ATL)
+
+- Lowest altitdues: New Orleans Saints (NO), New York Giants (NYG), New York Jets (NYJ)
+
+Then, we filter for two groups: one with kicks from the top 3 highest altitude stadiums and one with kicks from the top 3 lowest altitude stadiums. Using a Mann–Whitney U test (otherwise known as a Wilcoxon 2-sample t-test), we check if there's a significant difference in kick lengths between these two independent groups.
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data_high_elev <- data %>%
+  filter((homeTeamAbbr == 'DEN'|homeTeamAbbr == 'ARI'|homeTeamAbbr == 'ATL') & specialTeamsSuccess==1) %>%
+  group_by(possessionTeam) %>%
+  summarise(
+    success_prop = mean(specialTeamsSuccess, na.rm=T),
+    avg_yard = mean(yardlineNumber, na.rm=T),
+    avg_kickLength = mean(kickLength, na.rm=T)
+  )
+
+data_low_elev <- data %>%
+  filter((homeTeamAbbr == 'NO'|homeTeamAbbr == 'NYG'|homeTeamAbbr == 'NYJ') & specialTeamsSuccess==1) %>%
+  group_by(possessionTeam) %>%
+  summarise(
+    success_prop = mean(specialTeamsSuccess, na.rm=T),
+    avg_yard = mean(yardlineNumber, na.rm=T),
+    avg_kickLength = mean(kickLength, na.rm=T)
+  )
+
+test <- wilcox.test(data_high_elev$avg_kickLength, data_low_elev$avg_kickLength, paired = F) %>% tidy
+test["alternative"] <- "Two sided"
+test["p.value"] <- format(round(test$p.value, digits=2), nsmall = 2) 
+# Table for summary
+kbl(test, 
+    caption = "<center><strong>Mann–Whitney U test<center><strong>", 
+    col.names = c("Statistic", "P-Value", "Method", "Alternative"),
+    align='c') %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+
+```
+
+With a p-value of 0.10, there is very weak evidence supporting the alternative hypothesis that there's a significant difference in kick lengths between kicks in high altitude stadiums and kicks in low altitude stadiums.
+
+
+$$\\$$
+
+### The Models
+
+To begin, we group our data of game plays by posessionTeam (the team that is kicking the ball) and season. In the process, we summarise to find:
+
+- success_prop: the proportion of successful kick attempts 
+
+- avg_height: the average height of the kicker
+
+- avg_weight: the average weight of the kicker
+
+- avg_age: the average age (at time of kick) of the kicker 
+
+- home_prop: the proportion of these kicks that were done during a home game 
+
+- avg_kickLength: the average kick length in yards
+
+To evaluate the relationship between kick length and successful kicking attempts and to explore the association of other factors in a successful kick, we will fit 2 models to this grouped data. The first model is a multiple linear regression (MLR) model for success_prop with predictors: avg_height, avg_weight, avg_age, home_prop and avg_kickLength. The second model uses cubic regression spline and only takes into account avg_kickLength.
+
+$$\\$$
+
+#### Summary of Multiple Linear Regression Model
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# mean(data$height, na.rm=T)
+
+data_teams <- data %>%
+  group_by(possessionTeam, season) %>%
+  summarise(
+    success_prop = mean(specialTeamsSuccess, na.rm=T),
+    avg_height = mean(height_cm, na.rm=T),
+    avg_weight = mean(weight_kg, na.rm=T),
+    avg_age = mean(season-birthYear, na.rm=T),
+    home_prop = mean(possessionTeamHome, na.rm=T),
+    avg_kickLength = mean(kickLength, na.rm=T)
+  )
+# data_teams
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, output="asis"}
+
+mod1 <- lm(success_prop~ avg_height+avg_weight+avg_age+home_prop+avg_kickLength, data = data_teams)
+
+# summary(mod1)
+sum1 <- summary(mod1)
+sum1_tidy <- sum1 %>% tidy
+
+# Tables for model summary
+kbl(sum1_tidy,
+    caption = "<center><strong>Model Summary - MLR<center><strong>",
+    col.names = c("Term", "Estimate", "Standard Error", "Statistic", "P-Value"),
+    align='c') %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+
+tibble(`R Squared` = sum1$r.squared,
+       `Adjusted R Squared` = sum1$adj.r.squared) %>%
+  kbl(caption = "<center><strong>Model Summary - R Squared and Adjusted R Squared<center><strong>", align='c') %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+
+ggplot(data_teams, aes(x=avg_kickLength, y=success_prop)) +
+  geom_point() +
+  geom_abline(slope = coef(mod1)[["avg_kickLength"]],
+              intercept = coef(mod1)[["(Intercept)"]], color="#C04863", size=1)+
+  labs(title = "Proportion of Successful Kicks vs. Average Kick Lengths of Seasons",
+       subtitle= "Model: MLR of FEV by Weight, Age, Sex and Race") +
+  xlab("Kick Length (yards)") +
+  ylab("Proportion of Successful Kicks") +
+  theme_minimal() +
+  theme(
+     plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5),
+     plot.subtitle = element_text(color="#666666", size=13, hjust = 0.5),
+    axis.title.x = element_text(color="#666666", size=11,face="bold"),
+    axis.title.y = element_text(color="#666666", size=11, face="bold")
+  )
+
+
+```
+
+From the summary, we see that the p-value associated with average kick length is 0.000772 and hence, is statistically significant. From this, there's very strong evidence that a 1 yard increase in kicking distance is associated with an average decrease of -0.015% in season field goal kick success proportion. This decrease in success may be due to loss of accuracy when kicking longer lengths. Additionally, the intercept is has a p-value of statistically 0.002857 and is also signficant significant. 
+
+With an adjusted $R^2$ value of 0.08246, approximately 8.246% of variation in season success proportion can be explained by average height, average weight, average age, proportion of home games played and average kick length.
+
+$$\\$$
+
+#### Summary of Model with Cubic Regression Spline
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+mod2 <-gam(success_prop~s(avg_kickLength,bs="cr", k=10),data = data_teams)
+# summary(mod2)
+
+sum2 <- summary(mod2)
+sum2_tidy <- tidy(mod2)
+
+
+# Tables for model summary
+tibble(`Estimate` = sum2$p.coeff,
+       `Standard Error` = sum2$se["(Intercept)"],
+       `T Value` = sum2$p.t,
+       `P-Value` = sum2$p.pv) %>%
+  kbl(caption = "<center><strong>Model Summary - Parametric Coefficients<center><strong>", align='c') %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+
+kbl(sum2_tidy,
+    caption = "<center><strong>Model Summary - Smooth Terms<center><strong>",
+    col.names = c("Term", "Estimated Degree of Freedom", "Reference Degree of Freedom", "Statistic", "P-Value"),
+    align='c') %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+
+tibble(`Adjusted R Squared` = sum2$r.sq,
+       `Deviance Explained` = sum2$dev.expl) %>%
+  kbl(caption = "<center><strong>Model Summary - Adjusted R Squared and Deviance Explained<center><strong>", align='c') %>%
+  kable_styling(bootstrap_options = c("striped"), full_width = F)
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+
+ggplot(data_teams, aes(x=avg_kickLength, y=success_prop)) +
+  geom_point() +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 10), color="#C04863") +
+  labs(title = "Proportion of Successful Kicks vs. Average Kick Lengths of Seasons",
+       subtitle = "Model With Cubic Regression Spline") +
+  xlab("Kick Length (yards)") +
+  ylab("Proportion of Successful Kicks") +
+  theme_minimal() +
+  theme(
+     plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5),
+     plot.subtitle = element_text(color="#666666", size=13, hjust = 0.5),
+    axis.title.x = element_text(color="#666666", size=11,face="bold"),
+    axis.title.y = element_text(color="#666666", size=11, face="bold")
+  )
+    
+
+```
+
+In this model, kick length is our smooth term. The associated p-value is 0.000321 and hence, it's statistically significant. From the summary, the effective degree of freedom is 5.188 and thus, the curve of kick length is slightly more complex than a quintic curve. Moreover, the intercept has a p-value of less than $2 \times 10^{-16}$ and hence, it's also statistically significant.
+
+With an adjusted $R^2$ value of 0.221, roughly 22.1% of the data fit the model with cubic regression spline. This adjusted $R^2$ value is higher than that of the MLR model. Hence, this model is a better fit for the data.
+
+$$\\[0.1in]$$
+
+## Conclusion
+
+Our exploratory plots inform us that overall average kick length is approximately 42 yards. We also discovered that there was no association between kick length and kicker weight or height for successful and unsuccessul kicks. Additionally, we examined whether elevation is a factor in kicking length. We learnt from the Mann–Whitney U test that there is weak evidence supporting that there is significant difference in kick lengths between kicks performed in high altitude stadiums and kicks performed in low altitude stadiums. Moreover, investigating the association between kick length and kick outcome, both models that we fitted suggests that an increase in kick length is associated with a decrease in successful kick attempts. This is consistent with our plots- which suggests that the average kick length for successful kicks is lower than the average kick length for unsuccessful kicks. A possible explanation may be because of the increasing lack of accuracy when it comes to kicking longer lengths.
+
+$$\\[0.5in]$$
