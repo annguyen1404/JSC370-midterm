@@ -273,7 +273,7 @@ $$\\[0.1in]$$
 
 ## Preliminary Results
 
-First, to get a sense of from where kick attempts were made, we visual the yard line of field goal attempts in the 2018-2020 seasons. From the plot we see that most attempts were roughly from the 20 yards line. Additionally, the maximum yard line attempt was at 49. Additionally, the number of field goal attempts significantly drops at around the 40 yard line and further.
+First, to get a sense of from where kick attempts were made, we visualise the yard line of the line-of-scrimmage (i.e. the line where the play starts) of the field goal attempts in the 2018-2020 seasons. From the plot we see that most attempts were roughly from the 20 yard line. Additionally, the maximum yard line attempt was at 49. Additionally, the number of field goal attempts significantly drops at around the 40 yard line and further.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
 # Load in image of football field
@@ -295,7 +295,7 @@ data %>%
   xlim(0, 100)+   
   coord_equal()+
   theme_void() +
-  labs(title = "Number of Field Goal Attempts in 2018-2020")+
+  labs(title = "Number of Field Goal Attempts in 2018-2020\nBy Line-Of-Scrimmage Yard Line")+
   theme(
      text = element_text(color="#666666", face="bold"),
      plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5)
@@ -303,7 +303,7 @@ data %>%
 
 ```
 
-Next we take a look at the proportion of successful kicks at various yardlines. We see that the success proportion is quite consistent for attempts at roughly the 44 yards line and under. However for field goal attempts over the 44 yards, the success drops significantly. Most kicks at these yard lines are unsuccessful.
+Next we take a look at the proportion of successful kicks at various line-of-scrimmage yard lines. We see that the success proportion is quite consistent for attempts at roughly the 44 yard line and under. However for field goal attempts over the 44 yards, the success drops significantly. Most kicks at these yard lines are unsuccessful.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
 
@@ -322,7 +322,7 @@ data %>%
   xlim(0, 100)+   
   coord_equal()+
   theme_void()+
-  labs(title = "Successful Field Goal Attempts in 2018-2020")+
+  labs(title = "Successful Field Goal Attempts in 2018-2020\nBy Line-Of-Scrimmage Yard Line")+
   theme(
      text = element_text(color="#666666", face="bold"),
      plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5)
