@@ -42,6 +42,8 @@ library(leaflet)
 library(mgcv)
 library(stringr)
 library(broom)
+library(grid)   
+library(jpeg)
 ```
 
 ## Introduction
@@ -63,13 +65,11 @@ We'll also refer to this dataset for the locations of NFL teams' home stadiums: 
 Additionally, we'll use this dataset for the abbreviations of NFl teams:
 https://gist.github.com/cnizzardini/13d0a072adb35a0d5817
 
-<!-- DELETE: NOTE ON DATASET RENAMING???? -->
-
 $$\\$$
 
 ### The Tools
 
-We'll use dplyr to help merge all datasets and also create new variables. Moreover, we'll use ggplot to create all plots and leaflet for the map. We'll also use broom to tidy all raw outputs and format all tables with kable.
+We'll use dplyr to help merge all datasets and also create new variables. Additionally, we'll use ggplot to create all plots and leaflet for the map. We'll also use broom to tidy all raw outputs and format all tables with kable. For loading in the image and coordinating the points of the football field plots, we'll use jpeg and grid.
 
 $$\\$$
 
@@ -149,13 +149,12 @@ In this analysis, we'll only be examing field goals. Hence, we'll filter for pla
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 data <- data %>%
-  # filter(specialTeamsPlayType=='Field Goal' | specialTeamsPlayType=='Extra Point')
   filter(specialTeamsPlayType=='Field Goal')
 ```
 
 Additionally, we merge this new dataset of field goal plays with a dataset of players (provided by the NFL Data Bowl) by kickerId to get more information on the athlete who kicked the ball in each game play. However, before the merge, we need to standardize entries in the players dataset.
 
-Since the entries of height for this dataset is not standardized (sometimes recorded entirely in inches and sometimes recorded in feet and inches), we will convert all entries of height to cm. We will also convert all entries of weight to kg. Next, we convert all birth dates to Date objects.
+Since the entries of height for this dataset is not standardized (sometimes recorded entirely in inches and sometimes recorded in feet and inches), we will convert all entries of height to cm. We will also convert all entries of weight to kg. Next, we convert all birth dates to Date objects. For this variable, some entries have the year listed first and some had the year listed last. To standardize, we match date entries by regex to get the date formate in order to convert them to Dates. For example, the regex "-[0-9]{4}$" checks that the year is formatted first and hence, we can create our Date object approporiately.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 players <- read_csv("players.csv")
@@ -188,19 +187,6 @@ players <- rbind(players_a, players_b)
 Similar to before, to check that the merge was successful, we make sure that the number of observations in the newly merged dataset is equal to that of the dataset of field goal plays
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-# DELETE Check graph for weird values first. See that height is weird. PUT GRAPH OR SOMETHING HERE.
-# players %>% filter(nflId=="21213"|nflId=="33469")
-# Check with external resources for their actual heights
-# players[players$nflId=="21213", "height_cm"] <- 193.04
-# players[players$nflId=="33469", "height_cm"] <- 182.88
-
-
-# DELETE Fix formatting
-# players %>% filter(nflId=='25326'|nflId=='27091'|nflId=='38851')
-# players[players$nflId=='25326', "birthDate"] <- "1978-03-02"
-# players[players$nflId=='27091', "birthDate"] <- "1975-05-29"
-# players[players$nflId=='38851', "birthDate"] <- "1990-07-16"
-
 old_rows <- nrow(data)
 data <- merge(x=data,y=players,by.x="kickerId", by.y="nflId", all.x=T)
 
@@ -264,24 +250,6 @@ tibble(`Column` = colnames(data),
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
 ```
 
-
-
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
-# DELETE # Number of NAs BEFORE imputing data
-# 
-# # Columns with at least 1 NA and their type
-# data_yes_na <- sort(colnames(data)[colSums(is.na(data)) > 0])
-# data_yes_na_type <- sapply(data_yes_na, function(x) ifelse(x %in% numerical_vars, "numerical", "categorical"))
-# 
-# # Table for columns with NAs
-# tibble(`Column` = data_yes_na,
-#        `Numerical or Categorical`= data_yes_na_type,
-#        `Number of NAs` = sapply(data_yes_na, function(x) sum(is.na(data[[x]])))) %>%
-#   kbl(caption = "<center><strong>Columns of Merged Dataset With at Least One NA Observation<center><strong>") %>%
-#   kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
-
-```
-
 After that, we impute missing values for relevant variables. Note that we use the mean for numerical values and the median for categorical values.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
@@ -299,43 +267,70 @@ data[, kickLength := fcoalesce(kickLength, mean(kickLength, na.rm = TRUE)),
  by = .(possessionTeam, season)]
 ```
 
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
-# DELETE # sum(is.na(players$height_cm))
-# # sum(is.na(data$kickerId))
-# sum(is.na(data$birthDate))
-# sum(is.na(data$birthYear))
-# sum(is.na(data$height_cm))
-# # sum(is.na(data$kickReturnYardage))
-# sum(is.na(data$kickweight_kg))
-
-```
-
 The dataset is now ready to be explored.
 
 $$\\[0.1in]$$
 
 ## Preliminary Results
 
-<!-- Taking a look at the histogram of kick lengths, we see that the distribution is left-skewed and unimodal. The average kick length is approximately 42 yards. -->
+First, to get a sense of from where kick attempts were made, we visual the yard line of field goal attempts in the 2018-2020 seasons. From the plot we see that most attempts were roughly from the 20 yards line. Additionally, the maximum yard line attempt was at 49. Additionally, the number of field goal attempts significantly drops at around the 40 yard line and further.
 
-<!-- ```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.align='center'} -->
-<!-- # Histogram of Kick Length -->
-<!-- data %>% -->
-<!--   ggplot( aes(x=kickLength)) + -->
-<!--     geom_histogram(fill= "#6C5B7B", alpha=0.6, binwidth=2) + -->
-<!--     labs(title = "Histogram of Kick Length") + -->
-<!--     xlab("Kick Length") + -->
-<!--     ylab("Count") + -->
-<!--     theme_minimal() + -->
-<!--     theme( -->
-<!--        plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5), -->
-<!--       axis.title.x = element_text(color="#666666", size=11,face="bold"), -->
-<!--       axis.title.y = element_text(color="#666666", size=11, face="bold") -->
-<!--     ) -->
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+# Load in image of football field
+court <- readJPEG("field.jpg")
+court <- rasterGrob(court, width=unit(1,"npc"), height=unit(1,"npc"))
 
-<!-- ``` -->
+# Gets count
+get_num <- function(x){
+  length(x)
+}
 
-<!-- $$\\$$ -->
+# Plot yard line distance on football field with count of attempts
+data %>%
+  ggplot( aes(x=yardlineNumber*100/134+12, y=26.65, z=specialTeamsSuccess)) + # rescale the yardline based on the size of the image and the size of the end zones in the image
+  annotation_custom(court, 0, 100, 0, 53.3)+  
+  stat_summary_2d(fun = get_num, bins=24, alpha = 0.5)+
+  scale_fill_gradient(low = "red", high = "yellow", name = "Number of Field Goal Attempts")+
+  ylim(0, 53.3) + 
+  xlim(0, 100)+   
+  coord_equal()+
+  theme_void() +
+  labs(title = "Number of Field Goal Attempts in 2018-2020")+
+  theme(
+     text = element_text(color="#666666", face="bold"),
+     plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5)
+  )
+
+```
+
+Next we take a look at the proportion of successful kicks at various yardlines. We see that the success proportion is quite consistent for attempts at roughly the 44 yards line and under. However for field goal attempts over the 44 yards, the success drops significantly. Most kicks at these yard lines are unsuccessful.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+
+# Get proportion of true
+get_prop <- function(x){
+  (sum(x)/length(x))
+}
+
+# Plot yard line distance on football field with proportion of success
+data %>%
+  ggplot( aes(x=yardlineNumber*100/134+12, y=26.65, z=specialTeamsSuccess)) + # rescale the yardline based on the size of the image and the size of the end zones in the image
+  annotation_custom(court, 0, 100, 0, 53.3)+  
+  stat_summary_2d(fun = get_prop, bins=24, alpha = 0.5)+
+  scale_fill_gradient(low = "red", high = "yellow", name = "Proportion of Successful\nField Goal Attempts")+
+  ylim(0, 53.3) + 
+  xlim(0, 100)+   
+  coord_equal()+
+  theme_void()+
+  labs(title = "Successful Field Goal Attempts in 2018-2020")+
+  theme(
+     text = element_text(color="#666666", face="bold"),
+     plot.title = element_text(color="#666666", size=15, face="bold", hjust = 0.5)
+  )
+
+```
+
+$$\\$$
 
 Taking a look at the histogram of kick lengths, we see that the overall distribution is left-skewed and unimodal. The overall average kick length is approximately 42 yards. However, the average 'no good' kick attempt seems to be higher at 46-52 yards.
 
@@ -406,10 +401,9 @@ data %>%
 
 $$\\$$
 
-We now examine the plots of kick length vs. kicker height for successful and unsuccessul kicks. We see that for both kick results, the linear regression line is almost completely flat and the points do not follow a particular pattern. Hence, there is essentially no association between these a kicker's height and their kick length- whether the kick is successful or unsuccessful.
+Perhaps kickers who are taller and have longer legs would be able to kick further lengths? On that train of thought, we examine the plots of kick length vs. kicker height for successful and unsuccessul kicks. We see that for both kick results, the linear regression line is almost completely flat and the points do not follow a particular pattern. Hence, there is essentially no association between these a kicker's height and their kick length- whether the kick is successful or unsuccessful.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
-# data_success <- data %>% filter(specialTeamsSuccess == T)
 
 # Kick length vs. Kicker Height
 ggplot(data, aes(y=kickLength, x=height_cm, color=specialTeamsSuccess)) +
@@ -430,7 +424,7 @@ ggplot(data, aes(y=kickLength, x=height_cm, color=specialTeamsSuccess)) +
 
 $$\\$$
 
-Similarly, we plot kick length vs. kicker weight for successful and unsuccessul kicks. We also see that for both kick results, the linear regression line is almost completely flat and the points do not follow a particular pattern. Thus, there is no association between these a kicker's weight and their kick length- whether the kick is successful or unsuccessful.
+Maybe kickers with more mass would have more power and would be able to kick longer lengths? With our data, we plot kick length vs. kicker weight for successful and unsuccessul kicks. From this, we also see that for both kick results, the linear regression line is almost completely flat and the points do not follow a particular pattern. Thus, there is no association between these a kicker's weight and their kick length- whether the kick is successful or unsuccessful.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
 
@@ -611,8 +605,6 @@ $$\\$$
 #### Summary of Multiple Linear Regression Model
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-# mean(data$height, na.rm=T)
-
 data_teams <- data %>%
   group_by(possessionTeam, season) %>%
   summarise(
@@ -623,14 +615,12 @@ data_teams <- data %>%
     home_prop = mean(possessionTeamHome, na.rm=T),
     avg_kickLength = mean(kickLength, na.rm=T)
   )
-# data_teams
 ```
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, output="asis"}
 
 mod1 <- lm(success_prop~ avg_height+avg_weight+avg_age+home_prop+avg_kickLength, data = data_teams)
 
-# summary(mod1)
 sum1 <- summary(mod1)
 sum1_tidy <- sum1 %>% tidy
 
@@ -681,7 +671,6 @@ $$\\$$
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 
 mod2 <-gam(success_prop~s(avg_kickLength,bs="cr", k=10),data = data_teams)
-# summary(mod2)
 
 sum2 <- summary(mod2)
 sum2_tidy <- tidy(mod2)
