@@ -303,7 +303,7 @@ data %>%
 
 ```
 
-Next we take a look at the proportion of successful kicks at various line-of-scrimmage yard lines. We see that the success proportion is quite consistent for attempts at roughly the 44 yard line and under. However for field goal attempts over 44 yards, the success drops significantly. Most kicks at these yard lines are unsuccessful.
+Next we take a look at the proportion of successful kicks at various line-of-scrimmage yard lines. We see that the success proportion is quite consistent for attempts at roughly the 47 yard line and under. However for field goal attempts over 47 yards, the success drops significantly. Most kicks at these yard lines are unsuccessful.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
 
