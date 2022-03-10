@@ -273,12 +273,12 @@ $$\\[0.1in]$$
 
 ## Preliminary Results
 
-First, to get a sense of from where kick attempts were made, we visualise the yard line of the line-of-scrimmage (i.e. the line where the play starts) of the field goal attempts in the 2018-2020 seasons. From the plot we see that most attempts were roughly from the 20 yard line. Additionally, the maximum yard line attempt was at 49. Additionally, the number of field goal attempts significantly drops at around the 40 yard line and further.
+First, to get a sense of from where kick attempts were made, we visualise the yard line of the line-of-scrimmage (i.e. the line where the play starts) of field goal attempts in the 2018-2020 seasons. From the plot we see that most attempts were roughly from the 20 yard line. Additionally, we also discover that the number of field goal attempts significantly drops at around the 40 yard line and further.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
 # Load in image of football field
-court <- readJPEG("field.jpg")
-court <- rasterGrob(court, width=unit(1,"npc"), height=unit(1,"npc"))
+field <- readJPEG("field.jpg")
+field <- rasterGrob(field, width=unit(1,"npc"), height=unit(1,"npc"))
 
 # Gets count
 get_num <- function(x){
@@ -287,12 +287,12 @@ get_num <- function(x){
 
 # Plot yard line distance on football field with count of attempts
 data %>%
-  ggplot( aes(x=yardlineNumber*100/134+12, y=26.65, z=specialTeamsSuccess)) + # rescale the yardline based on the size of the image and the size of the end zones in the image
-  annotation_custom(court, 0, 100, 0, 53.3)+  
-  stat_summary_2d(fun = get_num, bins=24, alpha = 0.5)+
+  ggplot( aes(x=yardlineNumber, y=26.65, z=specialTeamsSuccess)) +
+  annotation_custom(field, -16, 116, 0, 53.3)+  
+  stat_summary_2d(fun = get_num, bins=25, alpha = 0.5)+
   scale_fill_gradient(low = "red", high = "yellow", name = "Number of Field Goal Attempts")+
   ylim(0, 53.3) + 
-  xlim(0, 100)+   
+  xlim(-16, 116)+   
   coord_equal()+
   theme_void() +
   labs(title = "Number of Field Goal Attempts in 2018-2020\nBy Line-Of-Scrimmage Yard Line")+
@@ -303,7 +303,7 @@ data %>%
 
 ```
 
-Next we take a look at the proportion of successful kicks at various line-of-scrimmage yard lines. We see that the success proportion is quite consistent for attempts at roughly the 44 yard line and under. However for field goal attempts over the 44 yards, the success drops significantly. Most kicks at these yard lines are unsuccessful.
+Next we take a look at the proportion of successful kicks at various line-of-scrimmage yard lines. We see that the success proportion is quite consistent for attempts at roughly the 44 yard line and under. However for field goal attempts over 44 yards, the success drops significantly. Most kicks at these yard lines are unsuccessful.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center'}
 
@@ -314,12 +314,12 @@ get_prop <- function(x){
 
 # Plot yard line distance on football field with proportion of success
 data %>%
-  ggplot( aes(x=yardlineNumber*100/134+12, y=26.65, z=specialTeamsSuccess)) + # rescale the yardline based on the size of the image and the size of the end zones in the image
-  annotation_custom(court, 0, 100, 0, 53.3)+  
-  stat_summary_2d(fun = get_prop, bins=24, alpha = 0.5)+
+  ggplot( aes(x=yardlineNumber, y=26.65, z=specialTeamsSuccess)) +
+  annotation_custom(field, -16, 116, 0, 53.3)+  
+  stat_summary_2d(fun = get_prop, bins=25, alpha = 0.5)+
   scale_fill_gradient(low = "red", high = "yellow", name = "Proportion of Successful\nField Goal Attempts")+
   ylim(0, 53.3) + 
-  xlim(0, 100)+   
+  xlim(-16, 116)+   
   coord_equal()+
   theme_void()+
   labs(title = "Successful Field Goal Attempts in 2018-2020\nBy Line-Of-Scrimmage Yard Line")+
